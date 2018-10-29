@@ -304,8 +304,11 @@ def write_union(fo, datum, schema):
     zero-based position within the union of the schema of its value. The value
     is then encoded per the indicated schema within the union."""
 
-    if isinstance(datum, tuple):
-        (name, datum) = datum
+    # it would probably be a good idea to keep a cache that maps from datum name to union index
+    # this would prevent iterating over the union repeatedly 
+    # this cache should probably be stored in the schema
+    if hasattr(datum, 'name'):
+        name = datum.name
         for index, candidate in enumerate(schema):
             if extract_record_type(candidate) == 'record':
                 schema_name = candidate['name']
@@ -317,6 +320,7 @@ def write_union(fo, datum, schema):
             msg = 'provided union type name %s not found in schema %s' \
               % (name, schema)
             raise ValueError(msg)
+
     else:
         pytype = type(datum)
         best_match_index = -1

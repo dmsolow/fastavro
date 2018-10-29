@@ -18,7 +18,7 @@ import json
 from .six import (
     xrange, btou, iteritems, is_str, str2ints, fstint
 )
-from .schema import extract_record_type, extract_logical_type, parse_schema
+from .schema import extract_record_type, extract_logical_type, parse_schema, schema_name
 from ._schema_common import SCHEMA_DEFS
 from ._read_common import (
     SchemaResolutionError, MAGIC, SYNC_SIZE, HEADER_SCHEMA
@@ -50,6 +50,33 @@ AVRO_TYPES = {
     'error_union'
 }
 
+"""
+These are generic named types
+"""
+class GenericRecord(dict):
+
+    def __init__(self, avro_name, schema, *args, **kwargs):
+        self.name = avro_name
+        self.schema = schema
+        super().__init__(*args, **kwargs)
+
+class GenericFixed(bytes):
+
+    def __new__(cls, avro_name, schema, *args, **kwargs):
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init__(self, avro_name, avro_schema, *_):
+        self.name = avro_name
+        self.schema = avro_schema
+
+class GenericEnum(str):
+
+    def __new__(cls, avro_name, schema, *args, **kwargs):
+        return super().__new__(cls, *args, **kwargs)
+
+    def __init__(self, avro_name, avro_schema, *_):
+        self.name = avro_name
+        self.schema = avro_schema
 
 def match_types(writer_type, reader_type):
     if isinstance(writer_type, list) or isinstance(reader_type, list):
@@ -102,12 +129,12 @@ def match_schemas(w_schema, r_schema):
         raise SchemaResolutionError(error_msg)
 
 
-def read_null(fo, writer_schema=None, reader_schema=None):
+def read_null(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """null is written as zero bytes."""
     return None
 
 
-def read_boolean(fo, writer_schema=None, reader_schema=None):
+def read_boolean(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """A boolean is written as a single byte whose value is either 0 (false) or
     1 (true).
     """
@@ -121,23 +148,23 @@ def parse_timestamp(data, resolution):
     return datetime.datetime.fromtimestamp(data / resolution, tz=utc)
 
 
-def read_timestamp_millis(data, writer_schema=None, reader_schema=None):
+def read_timestamp_millis(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     return parse_timestamp(data, float(MLS_PER_SECOND))
 
 
-def read_timestamp_micros(data, writer_schema=None, reader_schema=None):
+def read_timestamp_micros(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     return parse_timestamp(data, float(MCS_PER_SECOND))
 
 
-def read_date(data, writer_schema=None, reader_schema=None):
+def read_date(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     return datetime.date.fromordinal(data + DAYS_SHIFT)
 
 
-def read_uuid(data, writer_schema=None, reader_schema=None):
+def read_uuid(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     return UUID(data)
 
 
-def read_time_millis(data, writer_schema=None, reader_schema=None):
+def read_time_millis(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     h = int(data / MLS_PER_HOUR)
     m = int(data / MLS_PER_MINUTE) % 60
     s = int(data / MLS_PER_SECOND) % 60
@@ -145,7 +172,7 @@ def read_time_millis(data, writer_schema=None, reader_schema=None):
     return datetime.time(h, m, s, mls)
 
 
-def read_time_micros(data, writer_schema=None, reader_schema=None):
+def read_time_micros(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     h = int(data / MCS_PER_HOUR)
     m = int(data / MCS_PER_MINUTE) % 60
     s = int(data / MCS_PER_SECOND) % 60
@@ -153,17 +180,17 @@ def read_time_micros(data, writer_schema=None, reader_schema=None):
     return datetime.time(h, m, s, mcs)
 
 
-def read_bytes_decimal(data, writer_schema=None, reader_schema=None):
+def read_bytes_decimal(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     size = len(data)
     return _read_decimal(data, size, writer_schema)
 
 
-def read_fixed_decimal(data, writer_schema=None, reader_schema=None):
+def read_fixed_decimal(data, writer_schema=None, reader_schema=None, custom_type_map=None):
     size = writer_schema['size']
     return _read_decimal(data, size, writer_schema)
 
 
-def _read_decimal(data, size, writer_schema):
+def _read_decimal(data, size, writer_schema, custom_type_map=None):
     """
     based on https://github.com/apache/avro/pull/82/
     """
@@ -193,7 +220,7 @@ def _read_decimal(data, size, writer_schema):
     return scaled_datum
 
 
-def read_long(fo, writer_schema=None, reader_schema=None):
+def read_long(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """int and long values are written using variable-length, zig-zag
     coding."""
     c = fo.read(1)
@@ -214,7 +241,7 @@ def read_long(fo, writer_schema=None, reader_schema=None):
     return (n >> 1) ^ -(n & 1)
 
 
-def read_float(fo, writer_schema=None, reader_schema=None):
+def read_float(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """A float is written as 4 bytes.
 
     The float is converted into a 32-bit integer using a method equivalent to
@@ -224,7 +251,7 @@ def read_float(fo, writer_schema=None, reader_schema=None):
     return unpack('<f', fo.read(4))[0]
 
 
-def read_double(fo, writer_schema=None, reader_schema=None):
+def read_double(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """A double is written as 8 bytes.
 
     The double is converted into a 64-bit integer using a method equivalent to
@@ -233,26 +260,26 @@ def read_double(fo, writer_schema=None, reader_schema=None):
     return unpack('<d', fo.read(8))[0]
 
 
-def read_bytes(fo, writer_schema=None, reader_schema=None):
+def read_bytes(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """Bytes are encoded as a long followed by that many bytes of data."""
     size = read_long(fo)
     return fo.read(size)
 
 
-def read_utf8(fo, writer_schema=None, reader_schema=None):
+def read_utf8(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """A string is encoded as a long followed by that many bytes of UTF-8
     encoded character data.
     """
     return btou(read_bytes(fo), 'utf-8')
 
 
-def read_fixed(fo, writer_schema, reader_schema=None):
+def read_fixed(fo, writer_schema, reader_schema=None, custom_type_map=None):
     """Fixed instances are encoded using the number of bytes declared in the
     schema."""
     return fo.read(writer_schema['size'])
 
 
-def read_enum(fo, writer_schema, reader_schema=None):
+def read_enum(fo, writer_schema, reader_schema=None, custom_type_map=None):
     """An enum is encoded by a int, representing the zero-based position of the
     symbol in the schema.
     """
@@ -265,7 +292,7 @@ def read_enum(fo, writer_schema, reader_schema=None):
     return symbol
 
 
-def read_array(fo, writer_schema, reader_schema=None):
+def read_array(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """Arrays are encoded as a series of blocks.
 
     Each block consists of a long count value, followed by that many array
@@ -278,10 +305,10 @@ def read_array(fo, writer_schema, reader_schema=None):
     """
     if reader_schema:
         def item_reader(fo, w_schema, r_schema):
-            return read_data(fo, w_schema['items'], r_schema['items'])
+            return read_data(fo, w_schema['items'], r_schema['items'], custom_type_map)
     else:
         def item_reader(fo, w_schema, _):
-            return read_data(fo, w_schema['items'])
+            return read_data(fo, w_schema['items'], custom_type_map=custom_type_map)
 
     read_items = []
 
@@ -300,7 +327,7 @@ def read_array(fo, writer_schema, reader_schema=None):
     return read_items
 
 
-def read_map(fo, writer_schema, reader_schema=None):
+def read_map(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """Maps are encoded as a series of blocks.
 
     Each block consists of a long count value, followed by that many key/value
@@ -313,10 +340,10 @@ def read_map(fo, writer_schema, reader_schema=None):
     """
     if reader_schema:
         def item_reader(fo, w_schema, r_schema):
-            return read_data(fo, w_schema['values'], r_schema['values'])
+            return read_data(fo, w_schema['values'], r_schema['values'], custom_type_map)
     else:
         def item_reader(fo, w_schema, _):
-            return read_data(fo, w_schema['values'])
+            return read_data(fo, w_schema['values'], custom_type_map=custom_type_map)
 
     read_items = {}
     block_count = read_long(fo)
@@ -334,7 +361,7 @@ def read_map(fo, writer_schema, reader_schema=None):
     return read_items
 
 
-def read_union(fo, writer_schema, reader_schema=None):
+def read_union(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """A union is encoded by first writing a long value indicating the
     zero-based position within the union of the schema of its value.
 
@@ -346,19 +373,19 @@ def read_union(fo, writer_schema, reader_schema=None):
         # Handle case where the reader schema is just a single type (not union)
         if not isinstance(reader_schema, list):
             if match_types(writer_schema[index], reader_schema):
-                return read_data(fo, writer_schema[index], reader_schema)
+                return read_data(fo, writer_schema[index], reader_schema, custom_type_map)
         else:
             for schema in reader_schema:
                 if match_types(writer_schema[index], schema):
-                    return read_data(fo, writer_schema[index], schema)
+                    return read_data(fo, writer_schema[index], schema, custom_type_map)
         msg = 'schema mismatch: %s not found in %s' % \
             (writer_schema, reader_schema)
         raise SchemaResolutionError(msg)
     else:
-        return read_data(fo, writer_schema[index])
+        return read_data(fo, writer_schema[index], custom_type_map=custom_type_map)
 
 
-def read_record(fo, writer_schema, reader_schema=None):
+def read_record(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """A record is encoded by encoding the values of its fields in the order
     that they are declared. In other words, a record is encoded as just the
     concatenation of the encodings of its fields.  Field values are encoded per
@@ -380,7 +407,7 @@ def read_record(fo, writer_schema, reader_schema=None):
     record = {}
     if reader_schema is None:
         for field in writer_schema['fields']:
-            record[field['name']] = read_data(fo, field['type'])
+            record[field['name']] = read_data(fo, field['type'], custom_type_map=custom_type_map)
     else:
         readers_field_dict = {}
         aliases_field_dict = {}
@@ -399,10 +426,11 @@ def read_record(fo, writer_schema, reader_schema=None):
                     fo,
                     field['type'],
                     readers_field['type'],
+                    custom_type_map
                 )
             else:
                 # should implement skip
-                read_data(fo, field['type'], field['type'])
+                read_data(fo, field['type'], field['type'], custom_type_map)
 
         # fill in default values
         if len(readers_field_dict) > len(record):
@@ -417,6 +445,43 @@ def read_record(fo, writer_schema, reader_schema=None):
 
     return record
 
+def read_named_type(fo, writer_schema, reader_schema=None, custom_type_map={}, parent_ns=None):
+    # parent namespace is always None right now, this probably needs to change
+    try:
+        _, name = schema_name(reader_schema, parent_ns)
+    except TypeError:
+        _, name = schema_name(writer_schema, parent_ns)
+
+    record_type = extract_record_type(writer_schema)
+    logical_type = extract_logical_type(writer_schema)
+
+    reader_fn = NAMED_TYPE_READERS.get(record_type)
+    if reader_fn:
+        try:
+            data = reader_fn(fo, writer_schema, reader_schema, custom_type_map)
+        except StructError:
+            raise EOFError('cannot read %s from %s' % (record_type, fo))
+
+        if 'logicalType' in writer_schema:
+            fn = LOGICAL_READERS.get(logical_type)
+            if fn:
+                return fn(data, writer_schema, reader_schema, custom_type_map)
+
+        schema = reader_schema or writer_schema
+        if name in custom_type_map:
+            return custom_type_map[name](name, schema, data)
+        
+        if record_type == 'enum':
+            data = GenericEnum(name, reader_schema or writer_schema, data)
+        elif record_type == 'fixed':
+            data = GenericFixed(name, reader_schema or writer_schema, data)
+        elif record_type == 'record':
+            data = GenericRecord(name, reader_schema or writer_schema, data)
+
+        return data
+    else:
+        raise ValueError('Unable to find reader_fn for {}'.format(record_type))
+
 
 LOGICAL_READERS = {
     'long-timestamp-millis': read_timestamp_millis,
@@ -429,6 +494,12 @@ LOGICAL_READERS = {
     'long-time-micros': read_time_micros,
 }
 
+NAMED_TYPE_READERS = {
+    'record': read_record,
+    'enum': read_enum,
+    'fixed': read_fixed,
+}
+
 READERS = {
     'null': read_null,
     'boolean': read_boolean,
@@ -438,21 +509,19 @@ READERS = {
     'float': read_float,
     'double': read_double,
     'bytes': read_bytes,
-    'fixed': read_fixed,
-    'enum': read_enum,
+    'fixed': read_named_type,
+    'enum': read_named_type,
     'array': read_array,
     'map': read_map,
     'union': read_union,
     'error_union': read_union,
-    'record': read_record,
+    'record': read_named_type,
     'error': read_record,
     'request': read_record,
 }
 
-
-def read_data(fo, writer_schema, reader_schema=None):
+def read_data(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """Read data from file object according to schema."""
-
     record_type = extract_record_type(writer_schema)
     logical_type = extract_logical_type(writer_schema)
 
@@ -467,21 +536,22 @@ def read_data(fo, writer_schema, reader_schema=None):
     reader_fn = READERS.get(record_type)
     if reader_fn:
         try:
-            data = reader_fn(fo, writer_schema, reader_schema)
+            data = reader_fn(fo, writer_schema, reader_schema, custom_type_map)
         except StructError:
             raise EOFError('cannot read %s from %s' % (record_type, fo))
 
         if 'logicalType' in writer_schema:
             fn = LOGICAL_READERS.get(logical_type)
             if fn:
-                return fn(data, writer_schema, reader_schema)
+                return fn(data, writer_schema, reader_schema, custom_type_map)
 
         return data
     else:
         return read_data(
             fo,
             SCHEMA_DEFS[record_type],
-            SCHEMA_DEFS.get(reader_schema)
+            SCHEMA_DEFS.get(reader_schema),
+            custom_type_map
         )
 
 
@@ -525,15 +595,15 @@ except ImportError:
     pass
 
 
-def _iter_avro_records(fo, header, codec, writer_schema, reader_schema):
+def _iter_avro_records(fo, header, codec, writer_schema, reader_schema, custom_type_map={}):
     """Return iterator over avro records."""
     for block in _iter_avro_blocks(fo, header, codec, writer_schema,
-                                   reader_schema):
+                                   reader_schema, custom_type_map):
         for record in block:
             yield record
 
 
-def _iter_avro_blocks(fo, header, codec, writer_schema, reader_schema):
+def _iter_avro_blocks(fo, header, codec, writer_schema, reader_schema, custom_type_map={}):
     """Return iterator over avro blocks."""
     sync_marker = header['sync']
 
@@ -556,7 +626,7 @@ def _iter_avro_blocks(fo, header, codec, writer_schema, reader_schema):
 
         yield Block(
             block_bytes, num_block_records, codec, reader_schema,
-            writer_schema, offset, size
+            writer_schema, offset, size, custom_type_map=custom_type_map
         )
 
 
@@ -584,7 +654,7 @@ class Block:
         Size of the block in bytes
     """
     def __init__(self, bytes_, num_records, codec, reader_schema,
-                 writer_schema, offset, size):
+                 writer_schema, offset, size, custom_type_map={}):
         self.bytes_ = bytes_
         self.num_records = num_records
         self.codec = codec
@@ -592,11 +662,12 @@ class Block:
         self.writer_schema = writer_schema
         self.offset = offset
         self.size = size
+        self.custom_type_map = custom_type_map
 
     def __iter__(self):
         for i in xrange(self.num_records):
             yield read_data(self.bytes_, self.writer_schema,
-                            self.reader_schema)
+                            self.reader_schema, self.custom_type_map)
 
     def __str__(self):
         return ("Avro block: %d bytes, %d records, codec: %s, position %d+%d"
@@ -605,7 +676,8 @@ class Block:
 
 
 class file_reader:
-    def __init__(self, fo, reader_schema=None):
+    def __init__(self, fo, reader_schema=None, custom_type_map={}):
+        self.custom_type_map = custom_type_map
         self.fo = fo
         try:
             self._header = read_data(self.fo, HEADER_SCHEMA)
@@ -676,14 +748,15 @@ class reader(file_reader):
         The schema used when reading (if provided)
     """
 
-    def __init__(self, fo, reader_schema=None):
-        file_reader.__init__(self, fo, reader_schema)
-
+    def __init__(self, fo, reader_schema=None, custom_type_map={}):
+        file_reader.__init__(self, fo, reader_schema, custom_type_map=custom_type_map)
         self._elems = _iter_avro_records(self.fo,
                                          self._header,
                                          self.codec,
                                          self.writer_schema,
-                                         self.reader_schema)
+                                         self.reader_schema,
+                                         self.custom_type_map)
+
 
 
 class block_reader(file_reader):
@@ -722,17 +795,18 @@ class block_reader(file_reader):
         The schema used when reading (if provided)
     """
 
-    def __init__(self, fo, reader_schema=None):
-        file_reader.__init__(self, fo, reader_schema)
+    def __init__(self, fo, reader_schema=None, custom_type_map={}):
+        file_reader.__init__(self, fo, reader_schema, custom_type_map=custom_type_map)
 
         self._elems = _iter_avro_blocks(self.fo,
                                         self._header,
                                         self.codec,
                                         self.writer_schema,
-                                        self.reader_schema)
+                                        self.reader_schema,
+                                        custom_type_map=self.custom_type_map)
 
 
-def schemaless_reader(fo, writer_schema, reader_schema=None):
+def schemaless_reader(fo, writer_schema, reader_schema=None, custom_type_map={}):
     """Reads a single record writen using the
     :meth:`~fastavro._write_py.schemaless_writer`
 
@@ -764,7 +838,7 @@ def schemaless_reader(fo, writer_schema, reader_schema=None):
     if reader_schema:
         reader_schema = parse_schema(reader_schema)
 
-    return read_data(fo, writer_schema, reader_schema)
+    return read_data(fo, writer_schema, reader_schema, custom_type_map)
 
 
 def is_avro(path_or_buffer):
