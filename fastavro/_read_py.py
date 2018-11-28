@@ -5,7 +5,7 @@
 # This code is a modified version of the code at
 # http://svn.apache.org/viewvc/avro/trunk/lang/py/src/avro/ which is under
 # Apache 2.0 license (http://www.apache.org/licenses/LICENSE-2.0)
-
+import re
 from fastavro.six import MemoryIO
 from struct import unpack, error as StructError
 from zlib import decompress
@@ -92,7 +92,6 @@ def match_types(writer_type, reader_type):
         return True
     return False
 
-
 def match_schemas(w_schema, r_schema):
     error_msg = 'Schema mismatch: %s is not %s' % (w_schema, r_schema)
     if isinstance(w_schema, list):
@@ -128,6 +127,10 @@ def match_schemas(w_schema, r_schema):
             return True
         raise SchemaResolutionError(error_msg)
 
+def read_validated_string(data, writer_schema=None, reader_schema=None, custom_type_map=None):
+    # this is deactivated for now
+    assert re.match((reader_schema or writer_schema).get('regex'), data), 'Validated string value {} does not match provided regular expression {}'.format(data, (reader_schema or writer_schema).get('regex'))
+    return data
 
 def read_null(fo, writer_schema=None, reader_schema=None, custom_type_map=None):
     """null is written as zero bytes."""
@@ -492,6 +495,7 @@ LOGICAL_READERS = {
     'string-uuid': read_uuid,
     'int-time-millis': read_time_millis,
     'long-time-micros': read_time_micros,
+    'string-validated-string': read_validated_string
 }
 
 NAMED_TYPE_READERS = {

@@ -6,7 +6,7 @@
 # http://svn.apache.org/viewvc/avro/trunk/lang/py/src/avro/ which is under
 # Apache 2.0 license (http://www.apache.org/licenses/LICENSE-2.0)
 
-import json
+import json, re
 
 import datetime
 import decimal
@@ -103,6 +103,10 @@ def prepare_time_micros(data, schema):
     else:
         return data
 
+def prepare_validated_string(data, schema):
+    # this is deactivated for now
+    assert re.match(schema['regex'], data), 'Validated string value {} does not match provided regular expression {}'.format(data, schema['regex'])
+    return data
 
 def prepare_bytes_decimal(data, schema):
     """Convert decimal.Decimal to bytes"""
@@ -368,7 +372,7 @@ LOGICAL_WRITERS = {
     'string-uuid': prepare_uuid,
     'int-time-millis': prepare_time_millis,
     'long-time-micros': prepare_time_micros,
-
+    'string-validated-string': prepare_validated_string
 }
 
 WRITERS = {
