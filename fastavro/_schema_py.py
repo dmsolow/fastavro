@@ -50,7 +50,7 @@ def schema_name(schema, parent_ns):
     return namespace, '{}.{}'.format(namespace, name)
 
 
-def parse_schema(schema, _write_hint=True):
+def parse_schema(schema, _write_hint=True, force=False):
     """Returns a parsed avro schema
 
     It is not necessary to call parse_schema but doing so and saving the parsed
@@ -75,7 +75,7 @@ def parse_schema(schema, _write_hint=True):
         with open('weather.avro', 'wb') as out:
             writer(out, parsed_schema, records)
     """
-    if isinstance(schema, dict) and "__fastavro_parsed" in schema:
+    if isinstance(schema, dict) and "__fastavro_parsed" in schema and force is False:
         return schema
     else:
         return _parse_schema(schema, "", _write_hint)

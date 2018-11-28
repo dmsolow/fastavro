@@ -436,7 +436,6 @@ def null_write_block(fo, block_bytes):
     write_long(fo, len(block_bytes))
     fo.write(block_bytes)
 
-
 def deflate_write_block(fo, block_bytes):
     """Write block in "deflate" codec."""
     # The first two characters and last character are zlib
@@ -621,7 +620,6 @@ def writer(fo,
         metadata,
         validator,
     )
-
     for record in records:
         output.write(record)
     output.flush()

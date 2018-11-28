@@ -12,7 +12,7 @@ from setuptools import Extension
 
 # publish.sh should set this variable to 1.
 try:
-    USE_CYTHON = False #int(os.getenv('FASTAVRO_USE_CYTHON'))
+    USE_CYTHON = int(os.getenv('FASTAVRO_USE_CYTHON'))
 except TypeError:
     USE_CYTHON = False
 
@@ -29,7 +29,7 @@ if not hasattr(sys, 'pypy_version_info'):
         Extension('fastavro._write', ["fastavro/_write" + ext]),
         Extension('fastavro._validation', ["fastavro/_validation" + ext]),
     ]
-
+ext_modules = []
 
 def version():
     pyfile = 'fastavro/__init__.py'

@@ -57,6 +57,9 @@ schemaless_writer = fastavro.write.schemaless_writer
 is_avro = fastavro.read.is_avro
 validate = fastavro.validation.validate
 parse_schema = fastavro.schema.parse_schema
+GenericRecord = fastavro.read._read.GenericRecord
+GenericFixed = fastavro.read._read.GenericFixed
+GenericEnum = fastavro.read._read.GenericEnum
 
 __all__ = [
     n for n in locals().keys() if not n.startswith('_')

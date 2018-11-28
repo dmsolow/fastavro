@@ -701,7 +701,7 @@ class file_reader:
         else:
             self.reader_schema = None
 
-        self.writer_schema = parse_schema(self.schema, _write_hint=False)
+        self.writer_schema = parse_schema(self.schema, _write_hint=False, force=True)
 
         self._elems = None
 
